@@ -22,6 +22,9 @@ Postman
 
     Download postman
     https://www.postman.com/downloads/
+    
+### Documentation
+    https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow
 
 ### Setup
    clone the repo to local directory
