@@ -1,10 +1,14 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/aspumesh10/songsCollection/controllers"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func setupRouter() *gin.Engine {
@@ -26,6 +30,15 @@ func setupRouter() *gin.Engine {
 }
 
 func main() {
+
+	dir, errDir := os.Executable()
+	if errDir != nil {
+		log.Println("unable to find env path")
+	}
+
+	absPath := filepath.Dir(dir)
+	godotenv.Load(absPath + "/.env")
+
 	r := setupRouter()
 	_ = r.Run(":3000")
 }

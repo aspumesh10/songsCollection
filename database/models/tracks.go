@@ -12,7 +12,8 @@ type Track struct {
 	Title            string        `gorm:"column:title;varchar(127);" json:"title"`
 	Isrc             string        `gorm:"column:isrc;varchar(127);" json:"isrc"`
 	Popularity       uint32        `gorm:"column:popularity;default:0" json:"popularity"`
-	AlbumName        string        `gorm:"column:name;varchar(127);" json:"name"`
+	AlbumName        string        `gorm:"column:albumName;varchar(127);" json:"albumName"`
+	Image            string        `gorm:"column:image;varchar(127);" json:"image"`
 	AlbumReleaseDate time.Time     `gorm:"column:releaseDate;default:null" json:"releaseDate"`
 	IsActive         uint16        `gorm:"column:isActive;not null;default:1" json:"isActive"`
 	IsDeleted        uint16        `gorm:"column:isDeleted;not null;default:0" json:"isDeleted"`

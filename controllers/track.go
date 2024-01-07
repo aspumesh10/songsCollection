@@ -4,11 +4,11 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/aspumesh10/songsCollection/database"
 	"github.com/aspumesh10/songsCollection/database/models"
+	"github.com/aspumesh10/songsCollection/services"
 	"github.com/gin-gonic/gin"
 
 	"gorm.io/gorm"
@@ -39,49 +39,82 @@ type AddTrackResponse struct {
  */
 func (repository *TracksRepo) AddTrack(c *gin.Context) {
 	var track models.Track
-	var artist models.Artists
-	var trackArtists models.TracksArtists
 	var response AddTrackResponse
 	var isrcBody Isrc
+
 	//using bind as preferring the form encoded
 	//use BindJSON if the data is coming in json form
 	c.Bind(&isrcBody)
 	log.Println(c.Request.Body)
 	log.Println(isrcBody)
 
-	track.Title = "Numb"
-	track.Popularity = 100
+	trackItem, errTrackDetails := services.FetchTrackDetails(isrcBody.Isrc)
+	log.Println(trackItem)
+	if errTrackDetails != nil {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": errTrackDetails.Error()})
+		return
+	}
+	track.Title = trackItem.Name
+	track.Popularity = trackItem.Popularity
 	track.CreatedByID = 1
-	track.Isrc = "TEST"
-	track.AlbumName = "Meteora"
-	track.AlbumReleaseDate, _ = time.Parse("2006-01-02", "2003-09-02")
-
+	track.Isrc = trackItem.ExternalID.Isrc
+	track.AlbumName = trackItem.Album.Name
+	track.AlbumReleaseDate, _ = time.Parse("2006-01-02", trackItem.Album.ReleaseDate)
+	if len(trackItem.Album.Images) > 0 {
+		track.Image = trackItem.Album.Images[0].Url
+	}
 	log.Println("creating track")
 	err := models.CreateTrack(repository.Db, &track)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	log.Println("creating artist")
 
-	artist.ArtistName = "Linkin Park"
-	errArtist := models.CreateArtist(repository.Db, &artist)
-	if errArtist != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	log.Println("creating artist track relation")
+	for _, artistDetails := range trackItem.Artists {
+		var artist models.Artists
+		var newArtist models.Artists
+		var trackArtists models.TracksArtists
 
-	trackArtists.ArtistID = artist.ID
-	trackArtists.TrackID = track.ID
-	errTrackArtists := models.CreateTrackArtists(repository.Db, &trackArtists)
-	if errTrackArtists != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
+		artistId := 0
+		err := models.GetArtistByName(repository.Db, &artist, artistDetails.Name)
+		createArtist := false
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				createArtist = true
+			} else {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		if createArtist == true {
+			newArtist.ArtistName = artistDetails.Name
+			errArtist := models.CreateArtist(repository.Db, &newArtist)
+			log.Println(errArtist)
+
+			if errArtist != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errArtist.Error()})
+				return
+			}
+			artistId = int(newArtist.ID)
+		} else {
+			artistId = int(artist.ID)
+		}
+
+		log.Println("creating artist track relation")
+
+		trackArtists.ArtistID = uint32(artistId)
+		trackArtists.TrackID = track.ID
+		errTrackArtists := models.CreateTrackArtists(repository.Db, &trackArtists)
+		if errTrackArtists != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errTrackArtists.Error()})
+			return
+		}
 	}
+
 	log.Println("done all")
 	response.TrackId = track.ID
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, gin.H{"data": response})
 }
 
 /**
@@ -98,10 +131,10 @@ func (repository *TracksRepo) GetTracks(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Println("Record not found")
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "Record Not Found"})
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Record Not Found"})
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -111,13 +144,13 @@ func (repository *TracksRepo) GetTracks(c *gin.Context) {
 	}
 
 	if len(artistIds) == 0 {
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "Artists not found"})
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"data": tracks, "totalCount": len(tracks), "error": "Artists not found"})
 		return
 	}
 
 	errTrackArtists := models.GetTrackArtists(repository.Db, &trackArtists, artistIds)
 	if errTrackArtists != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -127,17 +160,17 @@ func (repository *TracksRepo) GetTracks(c *gin.Context) {
 	}
 
 	if len(artistIds) == 0 {
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "Tracks not found"})
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"data": tracks, "totalCount": len(tracks), "error": "Tracks not found"})
 		return
 	}
 
 	errTrack := models.GetTracksByIds(repository.Db, &tracks, trackIds)
 	if errTrack != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, tracks)
+	c.JSON(http.StatusOK, gin.H{"data": tracks, "totalCount": len(tracks), "error": ""})
 }
 
 /**
@@ -149,49 +182,12 @@ func (repository *TracksRepo) GetTrackSingle(c *gin.Context) {
 	err := models.GetTrack(repository.Db, &track, isrc)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Println("Record not found")
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "Record Not Found"})
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"data": nil, "error": "Record Not Found"})
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, track)
-}
-
-// update user
-func (repository *TracksRepo) UpdateUser(c *gin.Context) {
-	var user models.User
-	id, _ := strconv.Atoi(c.Param("id"))
-	err := models.GetUser(repository.Db, &user, id)
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	c.BindJSON(&user)
-	err = models.UpdateUser(repository.Db, &user)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	c.JSON(http.StatusOK, user)
-}
-
-// delete user
-func (repository *TracksRepo) DeleteUser(c *gin.Context) {
-	var user models.User
-	id, _ := strconv.Atoi(c.Param("id"))
-	err := models.DeleteUser(repository.Db, &user, id)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{"data": track, "error": ""})
 }

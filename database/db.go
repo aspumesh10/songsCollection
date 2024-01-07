@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
-	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -20,15 +18,6 @@ func InitDb() *gorm.DB {
 }
 
 func connectDB() *gorm.DB {
-
-	dir, errDir := os.Executable()
-	if errDir != nil {
-		log.Println("unable to find env path")
-	}
-
-	absPath := filepath.Dir(dir)
-	godotenv.Load(absPath + "/.env")
-
 	db_name := os.Getenv("db_name")
 	db_host := os.Getenv("db_host")
 	db_port := os.Getenv("db_port")

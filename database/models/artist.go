@@ -38,3 +38,14 @@ func GetArtists(db *gorm.DB, artists *[]Artists, artist string) (err error) {
 	}
 	return nil
 }
+
+/**
+ *	This function is responsible for getting single artist by name
+ */
+func GetArtistByName(db *gorm.DB, artistStruct *Artists, artist string) (err error) {
+	err = db.Where("artistName = ?", artist).First(artistStruct).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
