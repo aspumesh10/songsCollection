@@ -56,6 +56,7 @@ Postman
 
 1. This endpoint retrieves track information from spotify and stores its basic metadata
 in local database for further processing
+This api make sure to retain only those track details having maximum popularity
 
     Request:
     
